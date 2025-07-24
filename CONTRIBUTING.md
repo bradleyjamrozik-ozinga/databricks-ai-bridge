@@ -16,6 +16,7 @@ If you are working with integration packages install them as well
 
 ```sh
 pip install -e "integrations/langchain[dev]"
+pip install -e "integrations/dspy[dev]"
 ```
 
 ### Build API docs

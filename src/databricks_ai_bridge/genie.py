@@ -20,6 +20,7 @@ def _count_tokens(text):
     encoding = tiktoken.encoding_for_model("gpt-4o")
     return len(encoding.encode(text))
 
+# TODO: allow json options to be passed through as kwargs
 def _to_json_string(data: pd.DataFrame) -> str:
     json_data = data.to_json(orient="records")
     return json.dumps(json_data)
