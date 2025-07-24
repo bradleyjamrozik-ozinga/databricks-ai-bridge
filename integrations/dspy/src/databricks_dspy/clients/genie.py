@@ -5,6 +5,7 @@ import json
 
 import dspy
 import mlflow
+from databricks.sdk import WorkspaceClient
 from databricks_ai_bridge.genie import Genie, GenieResponse
 from databricks_dspy.clients.databricks_lm import DatabricksLM
 
@@ -59,9 +60,14 @@ class GenieToolResponse:
 @mlflow.trace(span_type="TOOL")
 class GenieTool(dspy.Module):
 
-    def __init__(self, genie_space_id: str, genie_description: Optional[str] = None):
+    def __init__(
+            self,
+            genie_space_id: str,
+            genie_description: Optional[str] = None,
+            client: Optional[WorkspaceClient] = None
+    ):
         super().__init__()
-        self.genie = Genie(space_id=genie_space_id)
+        self.genie = Genie(space_id=genie_space_id, client=client)
         self.__doc__ = genie_description or getattr(self.genie, "description", None)
 
     @mlflow.trace()
@@ -92,9 +98,15 @@ class GenieAgentSignature(dspy.Signature):
 @mlflow.trace(span_type="AGENT")
 class GenieAgent(dspy.Module):
 
-    def __init__(self, genie_space_id: str, lm_serving_endpoint_name: str, genie_description: Optional[str] = None):
+    def __init__(
+            self,
+            genie_space_id: str,
+            lm_serving_endpoint_name: str,
+            genie_description: Optional[str] = None,
+            client: Optional[WorkspaceClient] = None
+    ):
         super().__init__()
-        self.genie = GenieTool(genie_space_id, genie_description)
+        self.genie = GenieTool(genie_space_id, genie_description, client)
         self.conversation_id = None
         self.__doc__ = genie_description or getattr(self.genie, "__doc__", None)
         self.lm = DatabricksLM(f"databricks/{lm_serving_endpoint_name}")
