@@ -18,7 +18,7 @@ class GenieToolResponse:
     text: Optional[str]
     conversation_id: Optional[str]
     query: Optional[str] = None
-    data: Optional[list[dict[str, Any]]] = None
+    data: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -32,31 +32,16 @@ class GenieToolResponse:
     @mlflow.trace(span_type="PARSER")
     def from_genie_response(genie_response: GenieResponse):
         text_response = (
-                str(genie_response.result)
+                genie_response.result
                 if genie_response.description is None
                 else genie_response.description
             )
-        try:
-            parsed_data = (
-                json.loads(str(genie_response.result))
-                if genie_response.description is not None
-                   and genie_response.result is not None
-                   and genie_response != []
-                else None
-            )
-            return GenieToolResponse(
-                text=text_response,
-                conversation_id=genie_response.conversation_id,
-                query=genie_response.query,
-                data=parsed_data,
-            )
-        except json.JSONDecodeError as e:
-            return GenieToolResponse(
-                text=f"{text_response} Data was returned but was unable to be parsed.",
-                conversation_id=genie_response.conversation_id,
-                query=genie_response.query,
-                data=None,
-            )
+        return GenieToolResponse(
+            text=text_response,
+            conversation_id=genie_response.conversation_id,
+            query=genie_response.query,
+            data=genie_response.result,
+        )
 
 @mlflow.trace(span_type="TOOL")
 class GenieTool(dspy.Module):
