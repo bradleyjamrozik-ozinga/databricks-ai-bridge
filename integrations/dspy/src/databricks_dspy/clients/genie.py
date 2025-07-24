@@ -39,7 +39,9 @@ class GenieToolResponse:
         try:
             parsed_data = (
                 json.loads(str(genie_response.result))
-                if genie_response.description is not None and genie_response.result is not None
+                if genie_response.description is not None
+                   and genie_response.result is not None
+                   and genie_response != []
                 else None
             )
             return GenieToolResponse(
@@ -49,7 +51,6 @@ class GenieToolResponse:
                 data=parsed_data,
             )
         except json.JSONDecodeError as e:
-            logger.exception("Failed to parse Genie result as JSON")
             return GenieToolResponse(
                 text=f"{text_response} Data was returned but was unable to be parsed.",
                 conversation_id=genie_response.conversation_id,
@@ -98,6 +99,9 @@ class GenieAgentSignature(dspy.Signature):
 @mlflow.trace(span_type="AGENT")
 class GenieAgent(dspy.Module):
 
+    # TODO: allow a dspy.LM instance to be given
+    # TODO: allow a dspy.Module instance to be given
+    # TODO: reference dspy.retrievers.databricks_rm
     def __init__(
             self,
             genie_space_id: str,
