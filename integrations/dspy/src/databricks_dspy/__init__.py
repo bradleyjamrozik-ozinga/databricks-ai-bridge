@@ -1,3 +1,3 @@
-from databricks_dspy.clients import DatabricksLM
+from databricks_dspy.clients import DatabricksLM, GenieTool, GenieAgent, GenieAgentSignature, GenieToolResponse, GenieResponse
 
-__all__ = ["DatabricksLM"]
+__all__ = ["DatabricksLM", "GenieTool", "GenieAgent", "GenieAgentSignature", "GenieToolResponse", "GenieResponse"]
