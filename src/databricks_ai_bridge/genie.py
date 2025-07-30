@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, Any
 import json
 
 import mlflow
@@ -21,8 +21,8 @@ def _count_tokens(text):
     return len(encoding.encode(text))
 
 # TODO: allow json options to be passed through as kwargs
-def _to_json_string(data: pd.DataFrame) -> str:
-    json_data = data.to_json(orient="records")
+def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = None) -> str:
+    json_data = data.to_json(orient="records", **json_kwargs)
     return json.dumps(json_data)
 
 @dataclass
@@ -97,7 +97,7 @@ def _parse_query_result(resp) -> Union[str, pd.DataFrame]:
     return truncated_result.strip()
 
 @mlflow.trace(span_type="PARSER")
-def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
+def _parse_query_result_json(resp, json_kwargs: Optional[dict[str, Any]] = None) -> Union[str, pd.DataFrame]:
     output = resp["result"]
     if not output:
         return "EMPTY"
@@ -130,7 +130,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
         rows.append(row)
 
     dataframe = pd.DataFrame(rows, columns=header)
-    query_result = _to_json_string(dataframe)
+    query_result = _to_json_string(dataframe, json_kwargs)
     tokens_used = _count_tokens(query_result)
 
     # If the full result fits, return it
@@ -138,7 +138,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
         return query_result.strip()
 
     def is_too_big(n):
-        return _count_tokens(_to_json_string(dataframe.iloc[:n])) > MAX_TOKENS_OF_DATA
+        return _count_tokens(_to_json_string(dataframe.iloc[:n], json_kwargs)) > MAX_TOKENS_OF_DATA
 
     # Use bisect_left to find the cutoff point of rows within the max token data limit in a O(log n) complexity
     # Passing True, as this is the target value we are looking for when _is_too_big returns
@@ -151,7 +151,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
     if len(truncated_df) == 0:
         return ""
 
-    truncated_result = _to_json_string(truncated_df)
+    truncated_result = _to_json_string(truncated_df, json_kwargs)
 
     # Double-check edge case if we overshot by one
     if _count_tokens(truncated_result) > MAX_TOKENS_OF_DATA:
@@ -192,7 +192,7 @@ class Genie:
         return resp
 
     @mlflow.trace()
-    def poll_for_result(self, conversation_id, message_id, return_data_as_json: bool = False):
+    def poll_for_result(self, conversation_id, message_id, return_data_as_json: bool = False, json_kwargs: Optional[dict[str, Any]] = None):
         @mlflow.trace()
         def poll_query_results(attachment_id, query_str, description, conversation_id=conversation_id):
             iteration_count = 0
@@ -206,8 +206,10 @@ class Genie:
                 state = resp["status"]["state"]
                 returned_conversation_id = resp.get("conversation_id", None)
                 if state == "SUCCEEDED":
-                    do_parse = _parse_query_result_json if return_data_as_json is True else _parse_query_result
-                    result = do_parse(resp)
+                    if return_data_as_json is True: # python truthy values are funky
+                        result = _parse_query_result_json(resp, json_kwargs)
+                    else:
+                        result = _parse_query_result(resp)
                     return GenieResponse(result, query_str, description, returned_conversation_id)
                 elif state in ["RUNNING", "PENDING"]:
                     logging.debug("Waiting for query result...")
