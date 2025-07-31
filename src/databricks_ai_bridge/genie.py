@@ -207,7 +207,7 @@ class Genie:
                 if state == "SUCCEEDED":
                     if return_data_as_json is True: # python truthy values are funky
                         # allow custom json parsing options but default to orient=records if not supplied
-                        if "orient" not in json_kwargs:
+                        if not json_kwargs or "orient" not in json_kwargs:
                             json_kwargs["orient"] = "records"
                         result = _parse_query_result_json(resp, json_kwargs)
                     else:
