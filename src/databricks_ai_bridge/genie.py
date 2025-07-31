@@ -21,12 +21,12 @@ def _count_tokens(text):
     return len(encoding.encode(text))
 
 def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = None) -> str:
-    json_data = data.to_json(**json_kwargs)
-    return json.dumps(json_data)
+    json_string = data.to_json(**json_kwargs)
+    return json_string
 
 @dataclass
 class GenieResponse:
-    result: Union[str, pd.DataFrame]
+    result: Union[str, dict[str, Any], pd.DataFrame]
     query: Optional[str] = ""
     description: Optional[str] = ""
     conversation_id: Optional[str] = None
