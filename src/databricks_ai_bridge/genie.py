@@ -20,9 +20,8 @@ def _count_tokens(text):
     encoding = tiktoken.encoding_for_model("gpt-4o")
     return len(encoding.encode(text))
 
-# TODO: allow json options to be passed through as kwargs
 def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = None) -> str:
-    json_data = data.to_json(orient="records", **json_kwargs)
+    json_data = data.to_json(**json_kwargs)
     return json.dumps(json_data)
 
 @dataclass
@@ -207,6 +206,9 @@ class Genie:
                 returned_conversation_id = resp.get("conversation_id", None)
                 if state == "SUCCEEDED":
                     if return_data_as_json is True: # python truthy values are funky
+                        # allow custom json parsing options but default to orient=records if not supplied
+                        if "orient" not in json_kwargs:
+                            json_kwargs["orient"] = "records"
                         result = _parse_query_result_json(resp, json_kwargs)
                     else:
                         result = _parse_query_result(resp)
