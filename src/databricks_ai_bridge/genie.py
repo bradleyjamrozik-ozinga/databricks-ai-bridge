@@ -193,23 +193,26 @@ class Genie:
     @mlflow.trace()
     def poll_for_result(self, conversation_id, message_id, return_data_as_json: bool = False, json_kwargs: Optional[dict[str, Any]] = None):
         @mlflow.trace()
-        def poll_query_results(attachment_id, query_str, description, conversation_id=conversation_id):
+        def poll_query_results(attachment_id, query_str, description, poll_conversation_id=conversation_id, parsing_as_json = False, parsing_json_kwargs=None):
             iteration_count = 0
             while iteration_count < MAX_ITERATIONS:
                 iteration_count += 1
                 resp = self.genie._api.do(
                     "GET",
-                    f"/api/2.0/genie/spaces/{self.space_id}/conversations/{conversation_id}/messages/{message_id}/attachments/{attachment_id}/query-result",
+                    f"/api/2.0/genie/spaces/{self.space_id}/conversations/{poll_conversation_id}/messages/{message_id}/attachments/{attachment_id}/query-result",
                     headers=self.headers,
                 )["statement_response"]
                 state = resp["status"]["state"]
                 returned_conversation_id = resp.get("conversation_id", None)
                 if state == "SUCCEEDED":
-                    if return_data_as_json is True: # python truthy values are funky
+                    if parsing_as_json is True: # python truthy values are funky
                         # allow custom json parsing options but default to orient=records if not supplied
-                        if not json_kwargs or "orient" not in json_kwargs:
-                            json_kwargs["orient"] = "records"
-                        result = _parse_query_result_json(resp, json_kwargs)
+                        if parsing_json_kwargs is None:
+                            parsing_json_kwargs = {}
+                        if "orient" not in parsing_json_kwargs:
+                            parsing_json_kwargs["orient"] = "records"
+
+                        result = _parse_query_result_json(resp, parsing_json_kwargs)
                     else:
                         result = _parse_query_result(resp)
                     return GenieResponse(result, query_str, description, returned_conversation_id)
@@ -224,7 +227,7 @@ class Genie:
                 f"Genie query for result timed out after {MAX_ITERATIONS} iterations of 5 seconds",
                 query_str,
                 description,
-                conversation_id
+                poll_conversation_id
             )
 
         @mlflow.trace()
@@ -245,7 +248,7 @@ class Genie:
                         description = query_obj.get("description", "")
                         query_str = query_obj.get("query", "")
                         attachment_id = attachment["attachment_id"]
-                        return poll_query_results(attachment_id, query_str, description, returned_conversation_id)
+                        return poll_query_results(attachment_id, query_str, description, returned_conversation_id, return_data_as_json, json_kwargs)
                     if resp["status"] == "COMPLETED":
                         text_content = next(r for r in resp["attachments"] if "text" in r)["text"][
                             "content"
