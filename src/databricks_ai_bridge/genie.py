@@ -26,7 +26,7 @@ def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = 
 
 @dataclass
 class GenieResponse:
-    result: Union[str, dict[str, Any], pd.DataFrame]
+    result: Union[str, list[dict[str, Any]], pd.DataFrame]
     query: Optional[str] = ""
     description: Optional[str] = ""
     conversation_id: Optional[str] = None
@@ -212,7 +212,7 @@ class Genie:
                         if "orient" not in parsing_json_kwargs:
                             parsing_json_kwargs["orient"] = "records"
 
-                        result = _parse_query_result_json(resp, parsing_json_kwargs)
+                        result = json.loads(_parse_query_result_json(resp, parsing_json_kwargs))
                     else:
                         result = _parse_query_result(resp)
                     return GenieResponse(result, query_str, description, returned_conversation_id)
