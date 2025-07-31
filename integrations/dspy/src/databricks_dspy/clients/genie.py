@@ -57,69 +57,75 @@ class GenieTool(dspy.Module):
         self.__doc__ = genie_description or getattr(self.genie, "description", None)
 
     @mlflow.trace()
-    def forward(self, question: str, conversation_id: Optional[str] = None):
+    def forward(self, args: dict[str, Any]) -> GenieToolResponse:
+        question = args.get("question")
+        if not question:
+            ValueError("You must ask a question")
+        conversation_id = args.get("conversation_id")
         genie_response = self.genie.ask_question(question, conversation_id, result_as_json=True)
         return GenieToolResponse.from_genie_response(genie_response)
 
+#
+# class GenieAgentSignature(dspy.Signature):
+#     question: str = dspy.InputField()
+#     genie_text: str = dspy.InputField(desc="The text response from the Genie")
+#     genie_query: Optional[str] = dspy.InputField(
+#         desc=(
+#             "The SQL query used by the genie. Useful for explaining to the user exactly "
+#             "how the genie arrived at a specific answer"
+#         )
+#     )
+#     genie_data: Optional[list[dict[str, Any]]] = dspy.InputField(
+#         desc="The data returned by the genie."
+#     )
+#     answer: str = dspy.OutputField(
+#         desc=(
+#             "The answer to the user's question, or follow up questions "
+#             "if the genie needs additional information to continue"
+#         )
+#     )
 
-class GenieAgentSignature(dspy.Signature):
-    question: str = dspy.InputField()
-    genie_text: str = dspy.InputField(desc="The text response from the Genie")
-    genie_query: Optional[str] = dspy.InputField(
-        desc=(
-            "The SQL query used by the genie. Useful for explaining to the user exactly "
-            "how the genie arrived at a specific answer"
-        )
-    )
-    genie_data: Optional[list[dict[str, Any]]] = dspy.InputField(
-        desc="The data returned by the genie."
-    )
-    answer: str = dspy.OutputField(
-        desc=(
-            "The answer to the user's question, or follow up questions "
-            "if the genie needs additional information to continue"
-        )
-    )
 
-@mlflow.trace(span_type="AGENT")
-class GenieAgent(dspy.Module):
-
-    # TODO: allow a dspy.LM instance to be given
-    # TODO: allow a dspy.Module instance to be given
-    # TODO: reference dspy.retrievers.databricks_rm
-    def __init__(
-            self,
-            genie_space_id: str,
-            lm_serving_endpoint_name: str,
-            genie_description: Optional[str] = None,
-            client: Optional[WorkspaceClient] = None
-    ):
-        super().__init__()
-        self.genie = GenieTool(genie_space_id, genie_description, client)
-        self.conversation_id = None
-        self.__doc__ = genie_description or getattr(self.genie, "__doc__", None)
-        self.lm = DatabricksLM(f"databricks/{lm_serving_endpoint_name}")
-        self.generator = dspy.ChainOfThought(GenieAgentSignature)
-
-    def forward(self, user_input: str):
-        # ask the genie first
-        genie_response = self.genie(user_input, self.conversation_id)
-
-        if genie_response.conversation_id:
-            self.conversation_id = genie_response.conversation_id
-
-        # send the genie response through the lm
-        with dspy.context(lm=self.lm):
-            response = self.generator(
-                **{
-                    "question": user_input,
-                    "genie_text": genie_response.text,
-                    "genie_query": genie_response.query,
-                    "genie_data": genie_response.data,
-                }
-            )
-
-        return dspy.Prediction(response=response)
-
-    def start_over(self):
-        self.conversation_id = None
+#
+# @mlflow.trace(span_type="AGENT")
+# class GenieAgent(dspy.Module):
+#
+#     # TODO: allow a dspy.LM instance to be given
+#     # TODO: allow a dspy.Module instance to be given
+#     # TODO: reference dspy.retrievers.databricks_rm
+#     def __init__(
+#             self,
+#             genie_space_id: str,
+#             lm_serving_endpoint_name: str,
+#             genie_description: Optional[str] = None,
+#             client: Optional[WorkspaceClient] = None
+#     ):
+#         super().__init__()
+#         self.genie = GenieTool(genie_space_id, genie_description, client)
+#         self.conversation_id = None
+#         self.__doc__ = genie_description or getattr(self.genie, "__doc__", None)
+#         self.lm = DatabricksLM(f"databricks/{lm_serving_endpoint_name}")
+#         self.generator = dspy.ChainOfThought(GenieAgentSignature)
+#
+#     def forward(self, user_input: str):
+#         # ask the genie first
+#         genie_response = self.genie(user_input, self.conversation_id)
+#
+#         if genie_response.conversation_id:
+#             self.conversation_id = genie_response.conversation_id
+#
+#         # send the genie response through the lm
+#         with dspy.context(lm=self.lm):
+#             response = self.generator(
+#                 **{
+#                     "question": user_input,
+#                     "genie_text": genie_response.text,
+#                     "genie_query": genie_response.query,
+#                     "genie_data": genie_response.data,
+#                 }
+#             )
+#
+#         return dspy.Prediction(response=response)
+#
+#     def start_over(self):
+#         self.conversation_id = None
