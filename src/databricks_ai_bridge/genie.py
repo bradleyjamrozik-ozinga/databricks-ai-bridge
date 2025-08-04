@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, Any
 import json
 
 import mlflow
@@ -20,13 +20,13 @@ def _count_tokens(text):
     encoding = tiktoken.encoding_for_model("gpt-4o")
     return len(encoding.encode(text))
 
-def _to_json_string(data: pd.DataFrame) -> str:
-    json_data = data.to_json(orient="records")
-    return json.dumps(json_data)
+def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = None) -> str:
+    json_string = data.to_json(**json_kwargs)
+    return json_string
 
 @dataclass
 class GenieResponse:
-    result: Union[str, pd.DataFrame]
+    result: Union[str, list[dict[str, Any]], pd.DataFrame]
     query: Optional[str] = ""
     description: Optional[str] = ""
     conversation_id: Optional[str] = None
@@ -96,7 +96,7 @@ def _parse_query_result(resp) -> Union[str, pd.DataFrame]:
     return truncated_result.strip()
 
 @mlflow.trace(span_type="PARSER")
-def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
+def _parse_query_result_json(resp, json_kwargs: Optional[dict[str, Any]] = None) -> Union[str, pd.DataFrame]:
     output = resp["result"]
     if not output:
         return "EMPTY"
@@ -129,7 +129,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
         rows.append(row)
 
     dataframe = pd.DataFrame(rows, columns=header)
-    query_result = _to_json_string(dataframe)
+    query_result = _to_json_string(dataframe, json_kwargs)
     tokens_used = _count_tokens(query_result)
 
     # If the full result fits, return it
@@ -137,7 +137,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
         return query_result.strip()
 
     def is_too_big(n):
-        return _count_tokens(_to_json_string(dataframe.iloc[:n])) > MAX_TOKENS_OF_DATA
+        return _count_tokens(_to_json_string(dataframe.iloc[:n], json_kwargs)) > MAX_TOKENS_OF_DATA
 
     # Use bisect_left to find the cutoff point of rows within the max token data limit in a O(log n) complexity
     # Passing True, as this is the target value we are looking for when _is_too_big returns
@@ -150,7 +150,7 @@ def _parse_query_result_json(resp) -> Union[str, pd.DataFrame]:
     if len(truncated_df) == 0:
         return ""
 
-    truncated_result = _to_json_string(truncated_df)
+    truncated_result = _to_json_string(truncated_df, json_kwargs)
 
     # Double-check edge case if we overshot by one
     if _count_tokens(truncated_result) > MAX_TOKENS_OF_DATA:
@@ -191,22 +191,30 @@ class Genie:
         return resp
 
     @mlflow.trace()
-    def poll_for_result(self, conversation_id, message_id, return_data_as_json: bool = False):
+    def poll_for_result(self, conversation_id, message_id, return_data_as_json: bool = False, json_kwargs: Optional[dict[str, Any]] = None):
         @mlflow.trace()
-        def poll_query_results(attachment_id, query_str, description, conversation_id=conversation_id):
+        def poll_query_results(attachment_id, query_str, description, poll_conversation_id=conversation_id, parsing_as_json = False, parsing_json_kwargs=None):
             iteration_count = 0
             while iteration_count < MAX_ITERATIONS:
                 iteration_count += 1
                 resp = self.genie._api.do(
                     "GET",
-                    f"/api/2.0/genie/spaces/{self.space_id}/conversations/{conversation_id}/messages/{message_id}/attachments/{attachment_id}/query-result",
+                    f"/api/2.0/genie/spaces/{self.space_id}/conversations/{poll_conversation_id}/messages/{message_id}/attachments/{attachment_id}/query-result",
                     headers=self.headers,
                 )["statement_response"]
                 state = resp["status"]["state"]
                 returned_conversation_id = resp.get("conversation_id", None)
                 if state == "SUCCEEDED":
-                    do_parse = _parse_query_result_json if return_data_as_json is True else _parse_query_result
-                    result = do_parse(resp)
+                    if parsing_as_json is True: # python truthy values are funky
+                        # allow custom json parsing options but default to orient=records if not supplied
+                        if parsing_json_kwargs is None:
+                            parsing_json_kwargs = {}
+                        if "orient" not in parsing_json_kwargs:
+                            parsing_json_kwargs["orient"] = "records"
+
+                        result = json.loads(_parse_query_result_json(resp, parsing_json_kwargs))
+                    else:
+                        result = _parse_query_result(resp)
                     return GenieResponse(result, query_str, description, returned_conversation_id)
                 elif state in ["RUNNING", "PENDING"]:
                     logging.debug("Waiting for query result...")
@@ -219,7 +227,7 @@ class Genie:
                 f"Genie query for result timed out after {MAX_ITERATIONS} iterations of 5 seconds",
                 query_str,
                 description,
-                conversation_id
+                poll_conversation_id
             )
 
         @mlflow.trace()
@@ -240,7 +248,7 @@ class Genie:
                         description = query_obj.get("description", "")
                         query_str = query_obj.get("query", "")
                         attachment_id = attachment["attachment_id"]
-                        return poll_query_results(attachment_id, query_str, description, returned_conversation_id)
+                        return poll_query_results(attachment_id, query_str, description, returned_conversation_id, return_data_as_json, json_kwargs)
                     if resp["status"] == "COMPLETED":
                         text_content = next(r for r in resp["attachments"] if "text" in r)["text"][
                             "content"
