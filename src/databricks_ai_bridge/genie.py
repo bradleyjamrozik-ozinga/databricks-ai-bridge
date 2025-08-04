@@ -272,7 +272,7 @@ class Genie:
         return poll_result()
 
     @mlflow.trace()
-    def ask_question(self, question, conversation_id: Optional[str] = None, result_as_json: bool = False):
+    def ask_question(self, question, conversation_id: Optional[str] = None, result_as_json: bool = False, json_kwargs: Optional[dict[str, Any]] = None):
         # check if a conversation_id is supplied
         # if yes, continue an existing genie conversation
         # otherwise start a new conversation
@@ -280,7 +280,7 @@ class Genie:
             resp = self.start_conversation(question)
         else:
             resp = self.create_message(conversation_id, question)
-        genie_response =  self.poll_for_result(resp["conversation_id"], resp["message_id"], result_as_json)
+        genie_response =  self.poll_for_result(resp["conversation_id"], resp["message_id"], result_as_json, json_kwargs)
         if not genie_response.conversation_id:
             genie_response.conversation_id = resp["conversation_id"]
         return genie_response
