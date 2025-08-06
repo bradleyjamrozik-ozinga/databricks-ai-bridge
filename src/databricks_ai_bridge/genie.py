@@ -21,6 +21,8 @@ def _count_tokens(text):
     return len(encoding.encode(text))
 
 def _to_json_string(data: pd.DataFrame, json_kwargs: Optional[dict[str, Any]] = None) -> str:
+    if data.empty:
+        return ""
     json_string = data.to_json(**json_kwargs)
     return json_string
 
@@ -205,14 +207,15 @@ class Genie:
                 state = resp["status"]["state"]
                 returned_conversation_id = resp.get("conversation_id", None)
                 if state == "SUCCEEDED":
-                    if parsing_as_json is True: # python truthy values are funky
+                    if parsing_as_json: # python truthy values are funky
                         # allow custom json parsing options but default to orient=records if not supplied
                         if parsing_json_kwargs is None:
                             parsing_json_kwargs = {}
                         if "orient" not in parsing_json_kwargs:
                             parsing_json_kwargs["orient"] = "records"
 
-                        result = json.loads(_parse_query_result_json(resp, parsing_json_kwargs))
+                        json_string = _parse_query_result_json(resp, parsing_json_kwargs)
+                        result = json.loads(json_string) if json_string else []
                     else:
                         result = _parse_query_result(resp)
                     return GenieResponse(result, query_str, description, returned_conversation_id)
